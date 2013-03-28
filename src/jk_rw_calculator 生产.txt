@@ -1,0 +1,3404 @@
+create or replace package body JK_RW_CALCULATOR is
+
+  -- Author  : wongt
+  -- Created : 2010-1-21 9:59:49
+  -- Purpose : ??????
+
+  --bb
+  /*procedure JK_RW_CHANNEL_BB_PROC(IN_REGION   IN JK_RW_DATA_BUSI_BB.Organize_Code%TYPE,
+                                  IN_CYCLE_ID JK_RW_DATA_BUSI_BB.CYCLE_ID%TYPE) AS
+    V_REGION_CODE JK_RW_DATA_BUSI_BB.Organize_Code%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_BB.CYCLE_ID%TYPE;
+    V_JK_XSBL     JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL     JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    --v_c_bl        JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+
+    --1.update status of history data with region and cycle_id
+    UPDATE JK_RW_DATA_CHANNEL_BB bb
+       SET bb.status = 'N'
+     where bb.organize_code = V_REGION_CODE
+       and bb.cycle_id = V_CYCLE_ID
+       and bb.status = 'Y';
+    commit;
+
+    --2.insert into channel_bb info
+
+    insert into JK_RW_DATA_CHANNEL_BB bb
+      (bb.BB_C_ID,
+       bb.ORGANIZE_CODE,
+       bb.RW_CHANNEL_ID,
+       bb.CYCLE_ID,
+       bb.BILL_MONTH,
+       bb.BUSI_DATE,
+       --bb.INCOME,
+       --bb.REWARD,
+       bb.STATUS,
+       bb.create_time)
+      select jk_rw_data_channel_bb$seq.nextval, tt.*, SYSDATE
+        from (select distinct t.organize_code,
+                              t.rw_channel_id,
+                              t.cycle_id,
+                              t.bill_month,
+                              t.busi_date,
+                              t.status
+                from jk_rw_data_busi_bb t
+               where t.organize_code = V_REGION_CODE
+                 and t.cycle_id = V_CYCLE_ID
+                 and t.status = 'Y') tt;
+
+    commit;
+
+    -- update the income
+    update JK_RW_DATA_CHANNEL_BB bb
+       set bb.income = (select sum(t.income)
+                          from jk_rw_data_busi_bb t
+                         where t.organize_code = bb.organize_code
+                           and t.cycle_id = bb.cycle_id
+                           and t.rw_channel_id = bb.rw_channel_id
+                           and t.bill_month = bb.bill_month
+                           and t.busi_date = bb.busi_date
+                           and t.status = 'Y')
+     where bb.organize_code = V_REGION_CODE
+       and bb.cycle_id = V_CYCLE_ID
+       and bb.status = 'Y';
+    commit;
+
+    --3.get vendition proportion and service proportion;
+   SELECT T.ELEMENT_VALUE_EXP / 100
+     INTO V_JK_XSBL
+     FROM (SELECT *
+             FROM JK_RULE_ELEMENT_EXT E
+            WHERE E.ORGANIZE_CODE = V_REGION_CODE
+              AND E.BUSI_ID = '3001'
+              AND E.RULE_ELEMENT_CODE = 'JK_XSBL'
+              AND E.CYCLE_ID <= V_CYCLE_ID
+            ORDER BY E.CYCLE_ID DESC) T
+    WHERE ROWNUM = 1;
+
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '3001'
+               AND E.RULE_ELEMENT_CODE = 'JK_FWBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+  \*  -- update the rate
+    update jk_rw_data_busi_bb t
+       set t.c_fwbl = V_JK_FWBL
+     where t.organize_code = V_REGION_CODE
+       and t.cycle_id = V_CYCLE_ID
+       and t.status = 'Y'
+       and t.c_fwbl = -1;
+
+    update jk_rw_data_busi_bb t
+       set t.c_xsbl = V_JK_XSBL
+     where t.organize_code = V_REGION_CODE
+       and t.cycle_id = V_CYCLE_ID
+       and t.status = 'Y'
+       and t.c_xsbl = -1;*\
+
+    --commit;
+
+    -- get the total of all proportion
+    \*  select (nvl(t.c_xsbl, V_JK_XSBL) + nvl(t.c_fwbl, V_JK_FWBL))
+     into v_c_bl
+     from jk_rw_data_busi_bb t, jk_rw_data_channel_bb bb
+    where t.organize_code = bb.organize_code
+      and t.rw_channel_id = bb.rw_channel_id
+      and t.cycle_id = bb.cycle_id
+      and t.bill_month = bb.bill_month
+      and t.busi_date = bb.busi_date
+      and t.status = 'Y';*\
+
+    -- update the reward
+    \*  update jk_rw_data_channel_bb bb
+      set bb.reward = bb.income*(select t.c_xsbl + t.c_fwbl
+                         from jk_rw_data_busi_bb t
+                        where t.organize_code = bb.organize_code
+                          and t.rw_channel_id = bb.rw_channel_id
+                          and t.cycle_id = bb.cycle_id
+                          and t.bill_month = bb.bill_month
+                          and t.busi_date = bb.busi_date
+                          and t.status = 'Y')
+    where bb.organize_code = V_REGION_CODE
+      and bb.cycle_id = V_CYCLE_ID
+      and bb.status = 'Y';*\
+
+    -- update the busi_reward which is three years ago
+
+    UPDATE JK_RW_DATA_BUSI_BB T
+       SET T.REWARD = T.INCOME * decode(T.C_FWBL,-1,V_JK_FWBL,t.c_fwbl)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND TO_DATE(T.BUSI_DATE, 'yyyymm') <=
+           ADD_MONTHS(TO_DATE(T.BILL_MONTH, 'yyyymm'), -24)
+       AND TO_DATE(T.BUSI_DATE, 'yyyymm') >
+           ADD_MONTHS(TO_DATE(T.BILL_MONTH, 'yyyymm'), -36)
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_BB BB
+       SET BB.Busi_Reward = (SELECT SUM(T.REWARD)
+                          FROM JK_RW_DATA_BUSI_BB T
+                         WHERE BB.ORGANIZE_CODE = T.ORGANIZE_CODE
+                           AND BB.RW_CHANNEL_ID = T.RW_CHANNEL_ID
+                           AND BB.CYCLE_ID = T.CYCLE_ID
+                           AND BB.BILL_MONTH = T.BILL_MONTH
+                           AND BB.BUSI_DATE = T.BUSI_DATE
+                           AND T.STATUS = 'Y')
+     WHERE BB.ORGANIZE_CODE = V_REGION_CODE
+       AND BB.CYCLE_ID = V_CYCLE_ID
+       AND TO_DATE(BB.BUSI_DATE, 'yyyymm') <=
+           ADD_MONTHS(TO_DATE(BB.BILL_MONTH, 'yyyymm'), -24)
+       AND TO_DATE(BB.BUSI_DATE, 'yyyymm') >
+           ADD_MONTHS(TO_DATE(BB.BILL_MONTH, 'yyyymm'), -36)
+       AND BB.STATUS = 'Y';
+       COMMIT;
+    -- update the busi_reward which is tow years ago
+
+    UPDATE JK_RW_DATA_BUSI_BB T
+       SET T.REWARD = T.INCOME * (decode(T.C_FWBL,-1,V_JK_FWBL,t.c_fwbl) + decode(T.C_XSBL,-1,V_JK_XSBL,t.c_xsbl))
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND TO_DATE(T.BUSI_DATE, 'yyyymm') >
+           ADD_MONTHS(TO_DATE(T.BILL_MONTH, 'yyyymm'), -24)
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+
+    UPDATE JK_RW_DATA_CHANNEL_BB BB
+       SET BB.Busi_Reward = (SELECT SUM(T.REWARD)
+                          FROM JK_RW_DATA_BUSI_BB T
+                         WHERE BB.ORGANIZE_CODE = T.ORGANIZE_CODE
+                           AND BB.RW_CHANNEL_ID = T.RW_CHANNEL_ID
+                           AND BB.CYCLE_ID = T.CYCLE_ID
+                           AND BB.BILL_MONTH = T.BILL_MONTH
+                           AND BB.BUSI_DATE = T.BUSI_DATE
+                           AND T.STATUS = 'Y')
+     WHERE BB.ORGANIZE_CODE = V_REGION_CODE
+       AND BB.CYCLE_ID = V_CYCLE_ID
+       AND TO_DATE(BB.BUSI_DATE, 'yyyymm') >
+           ADD_MONTHS(TO_DATE(BB.BILL_MONTH, 'yyyymm'), -24)
+       AND BB.STATUS = 'Y';
+    COMMIT;
+
+    --update the reward of  the table channel
+    UPDATE JK_RW_DATA_CHANNEL_BB BB
+       SET BB.REWARD = (SELECT SUM(T.BUSI_REWARD)
+                          FROM JK_RW_DATA_CHANNEL_BB T
+                         WHERE T.ORGANIZE_CODE = BB.ORGANIZE_CODE
+                           AND T.CYCLE_ID = BB.CYCLE_ID
+                           AND T.RW_CHANNEL_ID = BB.RW_CHANNEL_ID
+                           AND T.STATUS = 'Y')
+     WHERE BB.BILL_MONTH = (SELECT MAX(T2.BILL_MONTH)
+                              FROM JK_RW_DATA_CHANNEL_BB T2
+                             WHERE T2.ORGANIZE_CODE = BB.ORGANIZE_CODE
+                               AND T2.CYCLE_ID = BB.CYCLE_ID
+                               AND T2.RW_CHANNEL_ID = BB.RW_CHANNEL_ID
+                               AND T2.STATUS = 'Y')
+       AND BB.BUSI_DATE = (SELECT MAX(T3.BUSI_DATE)
+                             FROM JK_RW_DATA_CHANNEL_BB T3
+                            WHERE T3.ORGANIZE_CODE = BB.ORGANIZE_CODE
+                              AND T3.CYCLE_ID = BB.CYCLE_ID
+                              AND t3.bill_month = bb.bill_month
+                              AND T3.RW_CHANNEL_ID = BB.RW_CHANNEL_ID
+                              AND T3.STATUS = 'Y')
+       AND BB.ORGANIZE_CODE = V_REGION_CODE
+       AND BB.CYCLE_ID = V_CYCLE_ID
+       AND BB.STATUS = 'Y';
+
+       BEGIN
+       UPDATE JK_RW_DATA_CHANNEL_BB BB
+          SET BB.REWARD =  BB.REWARD * (SELECT DISTINCT T.REWARD_PROPORTION
+                             FROM JK_RW_DATA_CHANNEL_BB T
+                            WHERE T.RW_CHANNEL_ID = BB.RW_CHANNEL_ID
+                              AND T.CYCLE_ID = BB.CYCLE_ID
+                              AND T.ORGANIZE_CODE = BB.ORGANIZE_CODE
+                              AND T.STATUS = 'P')
+        WHERE BB.ORGANIZE_CODE = V_REGION_CODE
+          AND BB.CYCLE_ID = V_CYCLE_ID
+          AND BB.STATUS = 'Y'
+          AND bb.reward IS NOT NULL;
+
+       EXCEPTION
+       WHEN too_many_rows THEN
+       ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_BB_PROC',
+         'too more rate of table channel are found!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         null,
+         null);
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+         and upper(i.manage_template_code) LIKE
+           'JK_RW_DATA_CHANNEL_BB.' || V_REGION_CODE || '.%'
+         and i.cycle_id = V_CYCLE_ID;
+       COMMIT;
+       RETURN;
+       END ;
+
+    COMMIT;
+
+    --update JK_RW_DATA_MANAGE_INFO
+    UPDATE JK_RW_DATA_MANAGE_INFO I
+       SET I.STATUS = 70
+     WHERE I.ORGANIZE_CODE = V_REGION_CODE
+       AND UPPER(I.MANAGE_TEMPLATE_CODE) LIKE
+           'JK_RW_DATA_CHANNEL_BB.' || V_REGION_CODE || '.%'
+       AND I.CYCLE_ID = V_CYCLE_ID;
+    COMMIT;
+
+  --insert into the blackberry info of the jk_rw_pay
+  jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,V_CYCLE_ID,IN_BUSI_KIND => 3001);
+
+
+  EXCEPTION
+    when no_data_found then
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_BB_PROC',
+         'rate is not found!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         null,
+         null);
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+         and upper(i.manage_template_code) LIKE
+           'JK_RW_DATA_CHANNEL_BB.' || V_REGION_CODE || '.%'
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_BB_PROC',
+         'BlackBarry reward error!!',
+         err_msg,
+         sysdate,
+         'error no. :' || err_num,
+         null,
+         null);
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+         and upper(i.manage_template_code) LIKE
+           'JK_RW_DATA_CHANNEL_BB.' || V_REGION_CODE || '.%'
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+  end JK_RW_CHANNEL_BB_PROC;*/
+
+  --ipztc
+  /*procedure JK_RW_CHANNEL_IPZTC_PROC(IN_REGION   IN Jk_Rw_Data_Busi_Ipztc.Organize_Code%TYPE,
+                                       IN_CYCLE_ID Jk_Rw_Data_Busi_Ipztc.CYCLE_ID%TYPE) AS
+
+      err_num NUMBER;
+      err_msg VARCHAR2(4000);
+
+      V_REGION_CODE Jk_Rw_Data_Busi_Ipztc.Organize_Code%TYPE;
+      V_CYCLE_ID    Jk_Rw_Data_Busi_Ipztc.CYCLE_ID%TYPE;
+      V_JK_CJBL     JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    begin
+
+      V_REGION_CODE := IN_REGION;
+      v_cycle_id    := IN_CYCLE_ID;
+
+      --1.update status of history data with region and cycle_id
+      UPDATE JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.status = 'N'
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      --get the reward rate
+      SELECT T.ELEMENT_VALUE_EXP / 100
+        INTO V_JK_CJBL
+        FROM (SELECT *
+                FROM JK_RULE_ELEMENT_EXT E
+               WHERE E.ORGANIZE_CODE = V_REGION_CODE
+                 AND E.BUSI_ID = '4001'
+                 AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+                 AND E.CYCLE_ID <= V_CYCLE_ID
+               ORDER BY E.CYCLE_ID DESC) T
+       WHERE ROWNUM = 1;
+      commit;
+
+      -- insert data into JK_RW_DATA_CHANNEL_IPZTC
+      INSERT INTO JK_RW_DATA_CHANNEL_IPZTC
+        (IPZTC_C_ID,
+         RW_CHANNEL_ID,
+         ORGANIZE_CODE,
+         CYCLE_ID,
+         BILL_MONTH,
+         BUSI_DATE,
+         --DISCOUNT_INCOME,
+         --REAL_INCOME,
+         --DISCOUNT_MONEY,
+         --REWARD,
+         --NO_ZERO_COUNT,
+         --NO_ZERO_REWARD,
+         RATE,
+         --BUSI_REWARD,
+         STATUS,
+         CREATE_TIME)
+        SELECT JK_RW_DATA_CHANNEL_IPZTC$SEQ.NEXTVAL, TT.*, SYSDATE
+          FROM (SELECT DISTINCT (T.RW_CHANNEL_ID),
+                                T.ORGANIZE_CODE,
+                                T.CYCLE_ID,
+                                T.BILL_MONTH,
+                                T.BUSI_DATE,
+                                --0 disin, --????discount_income
+                                --0 realin, --(t.income / t.discount)
+                                --0 dismo, --((t.income / t.discount) - t.income)
+                                --0 reward, --REAL_INCOME*RATE
+                                --0 nzc, --NO_ZERO_COUNT
+                                --0 nzw, --NO_ZERO_COUNT*4
+                                V_JK_CJBL, --JK_RULE_ELEMENT_EXT
+                                --0, --BUSI_REWARD
+                                'Y'
+                  FROM JK_RW_DATA_BUSI_IPZTC T
+                 WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                   AND T.CYCLE_ID = V_CYCLE_ID
+                   AND T.STATUS = 'Y') TT;
+      commit;
+
+      -- update discount_income
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.discount_income = (select sum(t.income)
+                                     from jk_rw_data_busi_ipztc t
+                                    where t.organize_code = ip.organize_code
+                                      and t.cycle_id = ip.cycle_id
+                                      and t.rw_channel_id = ip.rw_channel_id
+                                      and t.bill_month = ip.bill_month
+                                      and t.status = 'Y')
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      -- update REAL_INCOME
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.real_income = (select sum(t.income / t.discount)
+                                 from JK_RW_DATA_BUSI_IPZTC t
+                                where t.organize_code = ip.organize_code
+                                  and t.cycle_id = ip.cycle_id
+                                  and t.bill_month = ip.bill_month
+                                  and t.rw_channel_id = ip.rw_channel_id
+                                  and t.status = 'Y')
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      -- update DISCOUNT_MONEY
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.discount_money = (ip.real_income - ip.discount_income)
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      -- update reward
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.busi_reward = ip.real_income * ip.rate
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      --update NO_ZERO_COUNT
+
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.no_zero_count = (select count(*)
+                                   from jk_rw_data_busi_ipztc t
+                                  where t.organize_code = ip.organize_code
+                                    and t.cycle_id = ip.cycle_id
+                                    and t.rw_channel_id = ip.rw_channel_id
+                                    and t.bill_month = ip.bill_month
+                                    and t.status = 'Y'
+                                    and t.income > 0)
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+
+      -- update NO_ZERO_reward
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.no_zero_reward = ip.no_zero_count * 4
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      -- update BUSI_REWARD
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.reward = (select ip.no_zero_reward + t.busi_reward -
+                                 t.discount_money
+                            from JK_RW_DATA_CHANNEL_IPZTC t
+                           where ip.organize_code = t.organize_code
+                             and ip.cycle_id = t.cycle_id
+                             and ip.rw_channel_id = t.rw_channel_id
+                             and ip.bill_month = t.bill_month
+                             and t.status = 'Y')
+       where ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+      --update the busi reward if it is less than zero
+      update JK_RW_DATA_CHANNEL_IPZTC ip
+         set ip.reward = 0
+       where ip.rw_channel_id in
+             (select t.rw_channel_id
+                from JK_RW_DATA_CHANNEL_IPZTC t
+               where ip.organize_code = t.organize_code
+                 AND ip.cycle_id = t.cycle_id
+                 and ip.rw_channel_id = t.rw_channel_id
+                 and t.status = 'Y'
+               group by t.rw_channel_id
+              having sum(t.reward) < 0)
+
+         and ip.organize_code = V_REGION_CODE
+         and ip.cycle_id = V_CYCLE_ID
+         and ip.status = 'Y';
+      commit;
+
+
+       jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,V_CYCLE_ID,IN_BUSI_KIND => 4001);
+
+      -- update JK_RW_DATA_MANAGE_INFO
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 70
+       where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_IPZTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 4001
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+    EXCEPTION
+      WHEN no_data_found then
+        err_num := SQLCODE;
+        err_msg := SQLERRM;
+
+        INSERT INTO jk_logs
+          (JK_LOGS_ID,
+           LOG_LEVEL,
+           MODULE_NAME,
+           LOG_MSG,
+           EXCEPTION,
+           LOG_TIME,
+           LOG_FIELD1,
+           LOG_FIELD2,
+           LOG_FIELD3)
+        values
+          (jk_logs_id$seq.nextval,
+           '0',
+           'JK_RW_CHANNEL_IPZTC_PROC',
+           'Rate is not found',
+           err_msg,
+           sysdate,
+           'error no. ?' || err_num,
+           '',
+           '');
+        COMMIT;
+
+        update JK_RW_DATA_MANAGE_INFO i
+           set i.status = 64
+         where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_IPZTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 4001
+           and i.cycle_id = V_CYCLE_ID;
+        commit;
+
+        return;
+
+      WHEN OTHERS THEN
+        ROLLBACK;
+        err_num := SQLCODE;
+        err_msg := SQLERRM;
+
+        INSERT INTO jk_logs
+          (JK_LOGS_ID,
+           LOG_LEVEL,
+           MODULE_NAME,
+           LOG_MSG,
+           EXCEPTION,
+           LOG_TIME,
+           LOG_FIELD1,
+           LOG_FIELD2,
+           LOG_FIELD3)
+        values
+          (jk_logs_id$seq.nextval,
+           '0',
+           'JK_RW_CHANNEL_IPZTC_PROC',
+           'ipztc reward error!!',
+           err_msg,
+           sysdate,
+           'error no. : ' || err_num,
+           null,
+           null);
+        COMMIT;
+
+        update JK_RW_DATA_MANAGE_INFO i
+           set i.status = 64
+         where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_IPZTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 4001
+           and i.cycle_id = V_CYCLE_ID;
+        commit;
+        return;
+    end JK_RW_CHANNEL_IPZTC_PROC;*/
+
+  --jtcl
+  --edit by dn 2010-11-1
+  procedure JK_RW_CHANNEL_JTCL_PROC(IN_REGION   IN Jk_Rw_Data_Busi_Jtcl.Organize_Code%TYPE,
+                                    IN_CYCLE_ID Jk_Rw_Data_Busi_Jtcl.CYCLE_ID%TYPE) AS
+    V_REGION_CODE Jk_Rw_Data_Busi_Jtcl.Organize_Code%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Busi_Jtcl.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '1001'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_JTCL T
+       SET T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_JTCL CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_JTCL
+    INSERT INTO JK_RW_DATA_CHANNEL_JTCL CL
+      (JTCL_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_JTCL$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_JTCL T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    COMMIT;
+
+    --insert into the jtcl info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 1001);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_JTCL.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 1001
+       and i.cycle_id = V_CYCLE_ID;
+    COMMIT;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_JTCL_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. :' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_JTCL.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 1001
+         and i.cycle_id = V_CYCLE_ID;
+      COMMIT;
+
+      return;
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_JTCL_PROC',
+         'jtcl reward error!!',
+         err_msg,
+         sysdate,
+         'error no. :' || err_num,
+         '',
+         '');
+
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_JTCL.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 1001
+         and i.cycle_id = V_CYCLE_ID;
+      COMMIT;
+      return;
+
+  end JK_RW_CHANNEL_JTCL_PROC;
+
+  --jttc
+  /*procedure JK_RW_CHANNEL_JTTC_PROC(IN_REGION   IN Jk_Rw_Data_Busi_Jttc.Organize_Code%TYPE,
+                                      IN_CYCLE_ID Jk_Rw_Data_Busi_Jttc.CYCLE_ID%TYPE) AS
+      V_REGION_CODE Jk_Rw_Data_Busi_Jttc.Organize_Code%TYPE;
+      V_CYCLE_ID    Jk_Rw_Data_Busi_Jttc.CYCLE_ID%TYPE;
+
+      V_JK_DBYWYCXZFJE JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+      err_num NUMBER;
+      err_msg VARCHAR2(4000);
+    begin
+      V_REGION_CODE := IN_REGION;
+      V_CYCLE_ID    := IN_CYCLE_ID;
+
+      --1.update status of history data with region and cycle_id
+      UPDATE JK_RW_DATA_CHANNEL_JTTC CL
+         SET CL.status = 'N'
+       where CL.organize_code = V_REGION_CODE
+         and CL.cycle_id = V_CYCLE_ID
+         and CL.status = 'Y';
+      commit;
+
+      --2.get vendition proportion and service proportion;
+
+      SELECT T.ELEMENT_VALUE_EXP
+        INTO V_JK_DBYWYCXZFJE
+        FROM (SELECT *
+                FROM JK_RULE_ELEMENT_EXT E
+               WHERE E.ORGANIZE_CODE = V_REGION_CODE
+                 AND E.BUSI_ID = '1002'
+                 AND E.RULE_ELEMENT_CODE = 'JK_DBYWYCXZFJE'
+                 AND E.CYCLE_ID <= V_CYCLE_ID
+               ORDER BY E.CYCLE_ID DESC) T
+       WHERE ROWNUM = 1;
+
+      commit;
+
+      --3. insert  data into JK_RW_DATA_CHANNEL_JTTC
+      insert into JK_RW_DATA_CHANNEL_JTTC CL
+        (JTTC_C_ID,
+         RW_CHANNEL_ID,
+         ORGANIZE_CODE,
+         CYCLE_ID,
+         BILL_MONTH,
+         --BUSI_DATE,
+         --INCOME,
+         --REWARD,
+         C_DBYCX,
+         STATUS,
+         create_time)
+        select JK_RW_DATA_CHANNEL_JTTC$seq.nextval, tt.*,SYSDATE
+          from (select distinct (t.rw_channel_id),
+                                t.organize_code,
+                                t.cycle_id,
+                                t.bill_month,
+                                --t.busi_date,
+                                --0 income, --income
+                                --0 reward, --reward
+                                V_JK_DBYWYCXZFJE,
+                                'Y'
+                  from Jk_Rw_Data_Busi_Jttc t
+                 where t.organize_code = V_REGION_CODE
+                   and t.cycle_id = V_CYCLE_ID
+                   and t.status = 'Y') tt;
+      commit;
+
+      --update income
+      update JK_RW_DATA_CHANNEL_JTTC cl
+         set cl.busi_quantity = (select sum(t.BUSI_QUANTITY)
+                                   from Jk_Rw_Data_Busi_Jttc t
+                                  where t.organize_code = cl.organize_code
+                                    and t.cycle_id = cl.cycle_id
+                                    and t.bill_month = cl.bill_month
+                                    and t.rw_channel_id = cl.rw_channel_id
+                                    and t.status = 'Y')
+       where cl.organize_code = V_REGION_CODE
+         and cl.cycle_id = V_CYCLE_ID
+         and cl.status = 'Y';
+
+      commit;
+
+      --update reward
+      update JK_RW_DATA_CHANNEL_JTTC cl
+         set cl.reward = cl.busi_quantity * cl.c_dbycx
+       where cl.organize_code = V_REGION_CODE
+         and cl.cycle_id = V_CYCLE_ID
+         and cl.status = 'Y';
+      commit;
+
+     --insert into the jttc info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,V_CYCLE_ID,IN_BUSI_KIND => 1002);
+
+
+      -- update JK_RW_DATA_MANAGE_INFO
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 70
+       where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_JTTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 1002
+         and i.cycle_id = V_CYCLE_ID
+        ;
+      commit;
+
+    EXCEPTION
+      WHEN no_data_found then
+        err_num := SQLCODE;
+        err_msg := SQLERRM;
+
+        INSERT INTO jk_logs
+          (JK_LOGS_ID,
+           LOG_LEVEL,
+           MODULE_NAME,
+           LOG_MSG,
+           EXCEPTION,
+           LOG_TIME,
+           LOG_FIELD1,
+           LOG_FIELD2,
+           LOG_FIELD3)
+        values
+          (jk_logs_id$seq.nextval,
+           '0',
+           'JK_RW_CHANNEL_JTTC_PROC',
+           'Rate is not found',
+           err_msg,
+           sysdate,
+           'error no. ?' || err_num,
+           '',
+           '');
+
+        COMMIT;
+
+        update JK_RW_DATA_MANAGE_INFO i
+           set i.status = 64
+         where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_JTTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 1002
+           and i.cycle_id = V_CYCLE_ID;
+        commit;
+        return;
+      WHEN OTHERS THEN
+        ROLLBACK;
+        err_num := SQLCODE;
+        err_msg := SQLERRM;
+
+        INSERT INTO jk_logs
+          (JK_LOGS_ID,
+           LOG_LEVEL,
+           MODULE_NAME,
+           LOG_MSG,
+           EXCEPTION,
+           LOG_TIME,
+           LOG_FIELD1,
+           LOG_FIELD2,
+           LOG_FIELD3)
+        values
+          (jk_logs_id$seq.nextval,
+           '0',
+           'JK_RW_CHANNEL_JTTC_PROC',
+           'jttc reward error!!',
+           err_msg,
+           sysdate,
+           'error no. :' || err_num,
+           '',
+           '');
+
+        COMMIT;
+
+        update JK_RW_DATA_MANAGE_INFO i
+           set i.status = 64
+         where i.organize_code = V_REGION_CODE
+  \*       and upper(i.manage_template_code) =
+             'JK_RW_DATA_CHANNEL_JTTC.' || V_REGION_CODE || '.INCOME'*\
+         AND i.busi_kind_id = 1002
+           and i.cycle_id = V_CYCLE_ID;
+        commit;
+        return;
+
+    end JK_RW_CHANNEL_JTTC_PROC;*/
+
+  --jxhd
+  --edit by dn 2011-1-6
+  procedure JK_RW_CHANNEL_JXHD_PROC(IN_REGION   IN jk_rw_data_busi_jxhd.organize_code%TYPE,
+                                    IN_CYCLE_ID jk_rw_data_busi_jxhd.cycle_id%TYPE) AS
+    V_REGION_CODE JK_RW_DATA_BUSI_JXHD.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_JXHD.CYCLE_ID%TYPE;
+
+    V_JK_TZBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+    V_JK_WHBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+    V_JK_ZERO JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_TZBL     := 0.25;
+    V_JK_WHBL     := 0.15;
+    V_JK_ZERO     := 0;
+
+    --1.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_JXHD T
+       SET T.C_TZBL    = (CASE WHEN T.REWARD_FLAG IN ('发展', '发展+维护') THEN V_JK_TZBL ELSE V_JK_ZERO END),
+           T.C_WHBL    = (CASE WHEN T.REWARD_FLAG IN ('维护', '发展+维护') THEN V_JK_WHBL ELSE V_JK_ZERO END),
+           T.REWARD_TZ = 0,
+           T.REWARD_WH = 0,
+           T.REWARD    = 0
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_BUSI_JXHD T
+       SET T.REWARD_TZ = T.C_TZBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD_WH = T.C_WHBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = T.C_TZBL * (T.INCOME + T.ADJUST_FEE) +
+                         T.C_WHBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_JXHD CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --2. insert  data into JK_RW_DATA_CHANNEL_JXHD
+    INSERT INTO JK_RW_DATA_CHANNEL_JXHD CRM
+      (JXHD_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       --BILL_MONTH,
+       C_TZBL,
+       C_WHBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_TZ,
+       REWARD_WH,
+       REWARD_C,
+       REWARD,
+       SCORE,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_JXHD$SEQ.NEXTVAL,
+             TT.*,
+             ROUND((TT.REWARD_C * S.SCORE_FINAL / 100), 2) REWARD,
+             S.SCORE_FINAL SCORE,
+             SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     --T.BILL_MONTH,
+                     T.C_TZBL,
+                     T.C_WHBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_TZ) REWARD_TZ,
+                     SUM(T.REWARD_WH) REWARD_WH,
+                     SUM(T.REWARD) REWARD_C
+                FROM JK_RW_DATA_BUSI_JXHD T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        --T.BILL_MONTH,
+                        T.C_TZBL,
+                        T.C_WHBL,
+                        T.STATUS) TT,
+             (SELECT F.CHANNEL_ID,
+                     F.CYCLE_ID,
+                     DECODE(ROUND((JK.SCORE_TOTAL * 0.75 +
+                                  F.SCORE_AVG * 0.25 + JK.SCORE_PLUS),
+                                  2),
+                            NULL,
+                            -1,
+                            ROUND((JK.SCORE_TOTAL * 0.75 + F.SCORE_AVG * 0.25 +
+                                  JK.SCORE_PLUS),
+                                  2)) SCORE_FINAL
+                FROM (SELECT *
+                        FROM JK_RW_DATA_SCORE_JXHD_JK T
+                       WHERE T.STATE = 'Y') JK,
+                     (SELECT T.CHANNEL_ID,
+                             T.CHANNEL_NAME,
+                             T.CYCLE_ID,
+                             SUM(T.SCORE_TOTAL) SCORE_SUM,
+                             AVG(T.SCORE_TOTAL) SCORE_AVG
+                        FROM JK_RW_DATA_SCORE_JXHD_F T
+                       WHERE T.STATE = 'Y'
+                       GROUP BY T.CHANNEL_ID, T.CHANNEL_NAME, T.CYCLE_ID) F
+               WHERE JK.CHANNEL_ID(+) = F.CHANNEL_ID
+                 AND JK.CYCLE_ID(+) = F.CYCLE_ID) S
+       WHERE TT.RW_CHANNEL_ID = S.CHANNEL_ID
+         AND TT.CYCLE_ID = S.CYCLE_ID;
+    commit;
+
+    --insert into the JXHD info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 4002);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_JXHD.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 4002
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found THEN
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_JXHD_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_JXHD.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 4002
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_JXHD_PROC',
+         'jxhd reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_JXHD.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 4002
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_JXHD_PROC;
+
+  --masdx
+  /*PROCEDURE JK_RW_CHANNEL_MASDX_PROC(IN_REGION   IN JK_RW_DATA_BUSI_MASDX.ORGANIZE_CODE%TYPE,
+                                       IN_CYCLE_ID JK_RW_DATA_BUSI_MASDX.CYCLE_ID%TYPE) AS
+
+      ERR_NUM NUMBER;
+      ERR_MSG VARCHAR2(4000);
+
+      V_REGION_CODE JK_RW_DATA_BUSI_MASDX.ORGANIZE_CODE%TYPE;
+      V_CYCLE_ID    JK_RW_DATA_BUSI_MASDX.CYCLE_ID%TYPE;
+
+      V_GLOBAL_RATE JK_RW_DATA_CHANNEL_MASDX.GLOBAL_RATE%TYPE;
+    BEGIN
+
+      V_REGION_CODE := IN_REGION;
+      V_CYCLE_ID    := IN_CYCLE_ID;
+
+      V_GLOBAL_RATE := 0.3;
+
+
+      UPDATE JK_RW_DATA_CHANNEL_MASDX MAS
+         SET MAS.STATUS = 'N'
+       WHERE MAS.ORGANIZE_CODE = V_REGION_CODE
+         AND MAS.CYCLE_ID = V_CYCLE_ID
+         AND MAS.STATUS = 'Y';
+
+      UPDATE JK_RW_DATA_BUSI_MASDX T
+         SET T.REWARD = NULL
+       WHERE T.ORGANIZE_CODE = V_REGION_CODE
+         AND T.CYCLE_ID = V_CYCLE_ID
+         AND T.STATUS = 'Y';
+
+      COMMIT;
+
+    INSERT INTO JK_RW_DATA_CHANNEL_MASDX
+      (MASDX_C_ID,
+       ORGANIZE_CODE,
+       RW_CHANNEL_ID,
+       CYCLE_ID,
+       BILL_MONTH,
+       BUSI_DATE,
+       INCOME,
+       REWARD,
+       SCORE,
+       RATE,
+       GLOBAL_RATE,
+       CREATE_TIME,
+       STATUS)
+      SELECT JK_RW_DATA_CHANNEL_MASDX$SEQ.NEXTVAL,
+             T.ORGANIZE_CODE,
+             T.RW_CHANNEL_ID,
+             T.CYCLE_ID,
+             T.BILL_MONTH,
+             T.BUSI_DATE,
+             T.INCOME,
+             T.REWARD,
+             T.SCORE,
+             T.RATE,
+             T.GLOBAL_RATE,
+             SYSDATE,
+             'Y'
+        FROM JK_RW_DATA_CHANNEL_MASDX T
+       WHERE T.RW_CHANNEL_ID IN (SELECT DISTINCT M.RW_CHANNEL_ID
+                                   FROM JK_RW_DATA_BUSI_MASDX M
+                                  WHERE M.CYCLE_ID = T.CYCLE_ID
+                                    AND M.ORGANIZE_CODE = T.ORGANIZE_CODE
+                                    AND M.STATUS = 'Y')
+         AND T.ORGANIZE_CODE = V_REGION_CODE
+         AND T.CYCLE_ID = V_CYCLE_ID
+         AND T.STATUS = 'P';
+
+      COMMIT;
+
+      --1.update the rate with score
+      UPDATE JK_RW_DATA_CHANNEL_MASDX MAS
+         SET MAS.RATE = (CASE WHEN MAS.SCORE >= 90 THEN 1 WHEN MAS.SCORE >= 80 AND MAS.SCORE < 90 THEN 0.9 WHEN MAS.SCORE >= 70 AND MAS.SCORE < 80 THEN 0.8
+
+  WHEN MAS.SCORE >= 60 AND MAS.SCORE < 70 THEN 0.7 WHEN MAS.SCORE < 60 THEN 0.6 END)
+       WHERE MAS.ORGANIZE_CODE = V_REGION_CODE
+         AND MAS.CYCLE_ID = V_CYCLE_ID
+         AND MAS.STATUS = 'Y';
+
+      --2 update the global rate\*******************update the global rate???**********************\
+      UPDATE JK_RW_DATA_CHANNEL_MASDX MAS
+         SET MAS.GLOBAL_RATE = V_GLOBAL_RATE
+       WHERE MAS.ORGANIZE_CODE = V_REGION_CODE
+         AND MAS.CYCLE_ID = V_CYCLE_ID
+         AND MAS.STATUS = 'Y';
+      COMMIT;
+
+      --3 update the reward
+      UPDATE JK_RW_DATA_BUSI_MASDX T
+         SET T.REWARD = T.INCOME * V_GLOBAL_RATE *
+                        (SELECT MAS.RATE
+                           FROM JK_RW_DATA_CHANNEL_MASDX MAS
+                          WHERE MAS.ORGANIZE_CODE = T.ORGANIZE_CODE
+                            AND MAS.CYCLE_ID = T.CYCLE_ID
+                            AND MAS.RW_CHANNEL_ID = T.RW_CHANNEL_ID
+                            AND MAS.BILL_MONTH = T.BILL_MONTH
+                            AND MAS.STATUS = 'Y')
+       WHERE T.ORGANIZE_CODE = V_REGION_CODE
+         AND T.CYCLE_ID = V_CYCLE_ID
+         AND T.STATUS = 'Y';
+
+      COMMIT;
+
+      --update the channel income
+      UPDATE JK_RW_DATA_CHANNEL_MASDX MAS
+         SET MAS.INCOME = (SELECT SUM(T.INCOME)
+                             FROM JK_RW_DATA_BUSI_MASDX T
+                            WHERE T.ORGANIZE_CODE = MAS.ORGANIZE_CODE
+                              AND T.CYCLE_ID = MAS.CYCLE_ID
+                              AND T.RW_CHANNEL_ID = MAS.RW_CHANNEL_ID
+                              AND T.BILL_MONTH = MAS.BILL_MONTH
+                              AND T.STATUS = 'Y')
+       WHERE MAS.ORGANIZE_CODE = V_REGION_CODE
+         AND MAS.CYCLE_ID = V_CYCLE_ID
+         AND MAS.STATUS = 'Y';
+      COMMIT;
+      --update the channel reward
+      UPDATE JK_RW_DATA_CHANNEL_MASDX MAS
+         SET MAS.REWARD = (SELECT SUM(T.REWARD)
+                             FROM JK_RW_DATA_BUSI_MASDX T
+                            WHERE T.ORGANIZE_CODE = MAS.ORGANIZE_CODE
+                              AND T.CYCLE_ID = MAS.CYCLE_ID
+                              AND T.RW_CHANNEL_ID = MAS.RW_CHANNEL_ID
+                              AND T.BILL_MONTH = MAS.BILL_MONTH
+                              AND T.STATUS = 'Y')
+       WHERE MAS.ORGANIZE_CODE = V_REGION_CODE
+         AND MAS.CYCLE_ID = V_CYCLE_ID
+         AND MAS.STATUS = 'Y';
+      COMMIT;
+
+           jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,V_CYCLE_ID,IN_BUSI_KIND => 200101);
+
+      -- update JK_RW_DATA_MANAGE_INFO
+      UPDATE JK_RW_DATA_MANAGE_INFO I
+         SET I.STATUS = 70
+       WHERE I.ORGANIZE_CODE = V_REGION_CODE
+            \*AND UPPER(I.MANAGE_TEMPLATE_CODE) LIKE
+                       'JK_RW_DATA_CHANNEL_MASDX.' || V_REGION_CODE || '.%'*\
+         AND I.BUSI_KIND_ID = 200101
+         AND I.CYCLE_ID = V_CYCLE_ID;
+      COMMIT;
+
+    EXCEPTION
+      WHEN OTHERS THEN
+        ROLLBACK;
+        ERR_NUM := SQLCODE;
+        ERR_MSG := SQLERRM;
+
+        INSERT INTO JK_LOGS
+          (JK_LOGS_ID,
+           LOG_LEVEL,
+           MODULE_NAME,
+           LOG_MSG,
+           EXCEPTION,
+           LOG_TIME,
+           LOG_FIELD1,
+           LOG_FIELD2,
+           LOG_FIELD3)
+        VALUES
+          (JK_LOGS_ID$SEQ.NEXTVAL,
+           '0',
+           'JK_RW_CHANNEL_MASDX_PROC',
+           'masdx reward error!!',
+           ERR_MSG,
+           SYSDATE,
+           'error no.?' || ERR_NUM,
+           NULL,
+           NULL);
+        COMMIT;
+        UPDATE JK_RW_DATA_MANAGE_INFO I
+           SET I.STATUS = 64
+         WHERE I.ORGANIZE_CODE = V_REGION_CODE
+            \*AND UPPER(I.MANAGE_TEMPLATE_CODE) LIKE
+                       'JK_RW_DATA_CHANNEL_MASDX.' || V_REGION_CODE || '.%'*\
+         AND I.BUSI_KIND_ID = 200101
+           AND I.CYCLE_ID = V_CYCLE_ID;
+        COMMIT;
+        RETURN;
+    END JK_RW_CHANNEL_MASDX_PROC;*/
+
+  --qxtdiydx
+  procedure JK_RW_CHANNEL_QXTDIYDX_PROC(IN_REGION   IN JK_RW_DATA_BUSI_QXTDIYDX.Organize_Code%TYPE,
+                                        IN_CYCLE_ID JK_RW_DATA_BUSI_QXTDIYDX.CYCLE_ID%TYPE) AS
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+
+    V_REGION_CODE JK_RW_DATA_BUSI_QXTDIYDX.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_QXTDIYDX.CYCLE_ID%TYPE;
+
+    v_rate JK_RULE_ELEMENT_EXT.RULE_ELEMENT_CODE%Type;
+  begin
+
+    V_REGION_CODE := IN_REGION;
+    v_cycle_id    := IN_CYCLE_ID;
+
+    --recalculate the reward data
+    update JK_RW_DATA_BUSI_QXTDIYDX t
+       set t.reward = null
+     where t.organize_code = V_REGION_CODE
+       and t.cycle_id = v_cycle_id
+       and t.status = 'Y';
+
+    update JK_RW_DATA_CHANNEL_QXTDIYDX diy
+       set diy.status = 'N'
+     where diy.organize_code = V_REGION_CODE
+       and diy.cycle_id = v_cycle_id
+       and diy.status = 'Y';
+    commit;
+
+    --insert into rate
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_RATE
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '200102'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    insert into JK_RW_DATA_CHANNEL_QXTDIYDX diy
+      (QXTDIYDX_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       --BUSI_DATE,
+       --INCOME,
+       --REWARD,
+       RATE,
+       STATUS,
+       CREATE_time)
+      select jk_rw_data_channel_qxtdiy$seq.nextval, tt.*, SYSDATE
+        from (select distinct (t.rw_channel_id),
+                              t.organize_code,
+                              t.cycle_id,
+                              t.bill_month,
+                              v_rate,
+                              'Y'
+                from JK_RW_DATA_BUSI_QXTDIYDX t
+               where t.organize_code = V_REGION_CODE
+                 and t.cycle_id = V_CYCLE_ID
+                 and t.status = 'Y') tt;
+    commit;
+    -- update the reward
+    UPDATE JK_RW_DATA_BUSI_QXTDIYDX T
+       SET T.REWARD = (SELECT DIY.RATE * (T.INCOME + t.adjust_fee)
+                         FROM JK_RW_DATA_CHANNEL_QXTDIYDX DIY
+                        WHERE DIY.ORGANIZE_CODE = T.ORGANIZE_CODE
+                          AND DIY.CYCLE_ID = T.CYCLE_ID
+                          AND DIY.RW_CHANNEL_ID = T.RW_CHANNEL_ID
+                          AND DIY.BILL_MONTH = T.BILL_MONTH
+                          AND DIY.STATUS = 'Y')
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    commit;
+
+    --update the channel income
+    UPDATE JK_RW_DATA_CHANNEL_QXTDIYDX DIY
+       SET DIY.INCOME = (SELECT SUM(T.INCOME) + SUM(t.adjust_fee)
+                           FROM JK_RW_DATA_BUSI_QXTDIYDX T
+                          WHERE T.ORGANIZE_CODE = DIY.ORGANIZE_CODE
+                            AND T.CYCLE_ID = DIY.CYCLE_ID
+                            AND T.RW_CHANNEL_ID = DIY.RW_CHANNEL_ID
+                            AND T.BILL_MONTH = DIY.BILL_MONTH
+                            AND T.STATUS = 'Y')
+     WHERE DIY.ORGANIZE_CODE = V_REGION_CODE
+       AND DIY.CYCLE_ID = V_CYCLE_ID
+       AND DIY.STATUS = 'Y';
+    commit;
+
+    --update the channel reward
+    update jk_rw_data_channel_qxtdiydx diy
+       set diy.reward = (select sum(t.reward)
+                           from jk_rw_data_busi_qxtdiydx t
+                          where t.organize_code = diy.organize_code
+                            and t.cycle_id = diy.cycle_id
+                            and t.rw_channel_id = diy.rw_channel_id
+                            and t.bill_month = diy.bill_month
+                            and t.status = 'Y')
+     where diy.organize_code = V_REGION_CODE
+       and diy.cycle_id = V_CYCLE_ID
+       and diy.status = 'Y';
+    commit;
+
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 200102);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    UPDATE JK_RW_DATA_MANAGE_INFO I
+       SET I.STATUS = 70
+     WHERE I.ORGANIZE_CODE = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                                 'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+       AND I.BUSI_KIND_ID = 200102
+       AND I.CYCLE_ID = V_CYCLE_ID;
+
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_QXTDIYDX_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         '????' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                                   'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+         AND I.BUSI_KIND_ID = 200102
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+
+      return;
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_QXTDIYDX_PROC',
+         'qxtdiydx reward error!!',
+         err_msg,
+         sysdate,
+         'error no. ?' || err_num,
+         null,
+         null);
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                                   'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+         AND I.BUSI_KIND_ID = 200102
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+  end JK_RW_CHANNEL_QXTDIYDX_PROC;
+
+  --qxtdiycx
+  procedure JK_RW_CHANNEL_QXTDIYCX_PROC(IN_REGION   IN JK_RW_DATA_BUSI_QXTDIYCX.Organize_Code%TYPE,
+                                        IN_CYCLE_ID JK_RW_DATA_BUSI_QXTDIYCX.CYCLE_ID%TYPE) AS
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+
+    V_REGION_CODE JK_RW_DATA_BUSI_QXTDIYCX.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_QXTDIYCX.CYCLE_ID%TYPE;
+
+    v_rate JK_RULE_ELEMENT_EXT.RULE_ELEMENT_CODE%Type;
+  begin
+
+    V_REGION_CODE := IN_REGION;
+    v_cycle_id    := IN_CYCLE_ID;
+
+    --recalculate the reward data
+    update JK_RW_DATA_BUSI_QXTDIYCX t
+       set t.reward = null
+     where t.organize_code = V_REGION_CODE
+       and t.cycle_id = v_cycle_id
+       and t.status = 'Y';
+
+    update JK_RW_DATA_CHANNEL_QXTDIYCX diy
+       set diy.status = 'N'
+     where diy.organize_code = V_REGION_CODE
+       and diy.cycle_id = v_cycle_id
+       and diy.status = 'Y';
+    commit;
+
+    --insert into rate
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_RATE
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '200104'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    insert into JK_RW_DATA_CHANNEL_QXTDIYCX diy
+      (QXTDIYCX_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       --BUSI_DATE,
+       --INCOME,
+       --REWARD,
+       RATE,
+       STATUS,
+       CREATE_time)
+      select JK_RW_DATA_CHANNEL_QXTDIYC$SEQ.nextval, tt.*, SYSDATE
+        from (select distinct (t.rw_channel_id),
+                              t.organize_code,
+                              t.cycle_id,
+                              t.bill_month,
+                              v_rate,
+                              'Y'
+                from JK_RW_DATA_BUSI_QXTDIYCX t
+               where t.organize_code = V_REGION_CODE
+                 and t.cycle_id = V_CYCLE_ID
+                 and t.status = 'Y') tt;
+    commit;
+    -- update the reward
+    UPDATE JK_RW_DATA_BUSI_QXTDIYCX T
+       SET T.REWARD = (SELECT DIY.RATE * (T.INCOME + t.adjust_fee)
+                         FROM JK_RW_DATA_CHANNEL_QXTDIYCX DIY
+                        WHERE DIY.ORGANIZE_CODE = T.ORGANIZE_CODE
+                          AND DIY.CYCLE_ID = T.CYCLE_ID
+                          AND DIY.RW_CHANNEL_ID = T.RW_CHANNEL_ID
+                          AND DIY.BILL_MONTH = T.BILL_MONTH
+                          AND DIY.STATUS = 'Y')
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    commit;
+
+    --update the channel income
+    UPDATE JK_RW_DATA_CHANNEL_QXTDIYCX DIY
+       SET DIY.INCOME = (SELECT SUM(T.INCOME) + SUM(t.adjust_fee)
+                           FROM JK_RW_DATA_BUSI_QXTDIYCX T
+                          WHERE T.ORGANIZE_CODE = DIY.ORGANIZE_CODE
+                            AND T.CYCLE_ID = DIY.CYCLE_ID
+                            AND T.RW_CHANNEL_ID = DIY.RW_CHANNEL_ID
+                            AND T.BILL_MONTH = DIY.BILL_MONTH
+                            AND T.STATUS = 'Y')
+     WHERE DIY.ORGANIZE_CODE = V_REGION_CODE
+       AND DIY.CYCLE_ID = V_CYCLE_ID
+       AND DIY.STATUS = 'Y';
+    commit;
+
+    --update the channel reward
+    update jk_rw_data_channel_qxtdiycx diy
+       set diy.reward = (select sum(t.reward)
+                           from jk_rw_data_busi_qxtdiycx t
+                          where t.organize_code = diy.organize_code
+                            and t.cycle_id = diy.cycle_id
+                            and t.rw_channel_id = diy.rw_channel_id
+                            and t.bill_month = diy.bill_month
+                            and t.status = 'Y')
+     where diy.organize_code = V_REGION_CODE
+       and diy.cycle_id = V_CYCLE_ID
+       and diy.status = 'Y';
+    commit;
+
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 200104);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    UPDATE JK_RW_DATA_MANAGE_INFO I
+       SET I.STATUS = 70
+     WHERE I.ORGANIZE_CODE = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                                 'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+       AND I.BUSI_KIND_ID = 200104
+       AND I.CYCLE_ID = V_CYCLE_ID;
+
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_QXTDIYCX_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         '????' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                                   'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+         AND I.BUSI_KIND_ID = 200104
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+
+      return;
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_QXTDIYCX_PROC',
+         'qxtdiycx reward error!!',
+         err_msg,
+         sysdate,
+         'error no. ?' || err_num,
+         null,
+         null);
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                                   'JK_RW_DATA_CHANNEL_QXTDIYDX.' || V_REGION_CODE || '.INCOME'*/
+         AND I.BUSI_KIND_ID = 200104
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+  end JK_RW_CHANNEL_QXTDIYCX_PROC;
+  --qxtmas
+  /*procedure JK_RW_CHANNEL_QXTMAS_PROC(IN_REGION   IN JK_RW_DATA_BUSI_QXTMAS.Organize_Code%TYPE,
+                                      IN_CYCLE_ID JK_RW_DATA_BUSI_QXTMAS.CYCLE_ID%TYPE) AS
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+
+    V_REGION_CODE JK_RW_DATA_BUSI_QXTMAS.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_QXTMAS.CYCLE_ID%TYPE;
+
+  begin
+
+    V_REGION_CODE := IN_REGION;
+    v_cycle_id    := IN_CYCLE_ID;
+
+    --recalculate the reward data
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.STATUS = 'N'
+     WHERE QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+    COMMIT;
+
+    INSERT INTO JK_RW_DATA_CHANNEL_QXTMAS
+      (QXTMAS_C_ID,
+       ORGANIZE_CODE,
+       RW_CHANNEL_ID,
+       CYCLE_ID,
+       BILL_MONTH,
+       BUSI_DATE,
+       INCOME,
+       REWARD,
+       RATE,
+       MODIFY_FEE,
+       INTEREST,
+       BUSI_REWARD,
+       CREATE_TIME,
+       STATUS)
+      SELECT JK_RW_DATA_CHANNEL_QXTMAS$SEQ.NEXTVAL,
+             T.ORGANIZE_CODE,
+             T.RW_CHANNEL_ID,
+             T.CYCLE_ID,
+             T.BILL_MONTH,
+             T.BUSI_DATE,
+             T.INCOME,
+             T.REWARD,
+             T.RATE,
+             T.MODIFY_FEE,
+             T.INTEREST,
+             T.BUSI_REWARD,
+             SYSDATE,
+             'Y'
+        FROM JK_RW_DATA_CHANNEL_QXTMAS T
+       WHERE T.RW_CHANNEL_ID IN (SELECT DISTINCT Q.RW_CHANNEL_ID
+                                   FROM JK_RW_DATA_BUSI_QXTMAS Q
+                                  WHERE Q.CYCLE_ID = T.CYCLE_ID
+                                    AND Q.ORGANIZE_CODE = T.ORGANIZE_CODE
+                                    AND Q.STATUS = 'Y')
+         AND T.CYCLE_ID = V_CYCLE_ID
+         AND T.ORGANIZE_CODE = V_REGION_CODE
+         AND T.STATUS = 'P';
+    COMMIT;
+
+    --update the income
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.INCOME = (SELECT SUM(T.INCOME)
+                          FROM JK_RW_DATA_BUSI_QXTMAS T
+                         WHERE T.ORGANIZE_CODE = QM.ORGANIZE_CODE
+                           AND T.CYCLE_ID = QM.CYCLE_ID
+                           AND T.RW_CHANNEL_ID = QM.RW_CHANNEL_ID
+                           AND T.BILL_MONTH = QM.BILL_MONTH
+                           AND T.STATUS = 'Y')
+     WHERE QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+
+    --update the busi reward
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.BUSI_REWARD = QM.INCOME * QM.RATE
+     WHERE QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+
+    COMMIT;
+
+    --update the busi reward
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.REWARD = (SELECT SUM(T.BUSI_REWARD)
+                          FROM JK_RW_DATA_CHANNEL_QXTMAS T
+                         WHERE T.ORGANIZE_CODE = QM.ORGANIZE_CODE
+                           AND T.CYCLE_ID = QM.CYCLE_ID
+                           AND T.RW_CHANNEL_ID = QM.RW_CHANNEL_ID
+                           AND T.STATUS = 'Y')
+     WHERE QM.BILL_MONTH = (SELECT MAX(QM2.BILL_MONTH)
+                              FROM JK_RW_DATA_CHANNEL_QXTMAS QM2
+                             WHERE QM2.ORGANIZE_CODE = V_REGION_CODE
+                               AND QM2.CYCLE_ID = V_CYCLE_ID
+                               AND QM2.RW_CHANNEL_ID = QM.RW_CHANNEL_ID
+                               AND QM2.STATUS = 'Y')
+       AND QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.REWARD = QM.REWARD - QM.MODIFY_FEE - QM.INTEREST
+     WHERE QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+
+    UPDATE JK_RW_DATA_CHANNEL_QXTMAS QM
+       SET QM.REWARD = 0
+     WHERE QM.REWARD < 0
+       AND QM.ORGANIZE_CODE = V_REGION_CODE
+       AND QM.CYCLE_ID = V_CYCLE_ID
+       AND QM.STATUS = 'Y';
+
+    commit;
+
+         jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,V_CYCLE_ID,IN_BUSI_KIND => 200103);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    UPDATE JK_RW_DATA_MANAGE_INFO I
+       SET I.STATUS = 70
+     WHERE I.ORGANIZE_CODE = V_REGION_CODE
+          \*and i.manage_template_code like
+                     'JK_RW_DATA_CHANNEL_QXTMAS.' || V_REGION_CODE || '.%'*\
+       AND I.BUSI_KIND_ID = 200103
+       AND I.CYCLE_ID = V_CYCLE_ID;
+
+    commit;
+
+  EXCEPTION
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_QXTMAS_PROC',
+         'qxtmas reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         null,
+         null);
+      COMMIT;
+
+      UPDATE JK_RW_DATA_MANAGE_INFO I
+         SET I.STATUS = 64
+       WHERE I.ORGANIZE_CODE = V_REGION_CODE
+            \*and i.manage_template_code like
+                                 'JK_RW_DATA_CHANNEL_QXTMAS.' || V_REGION_CODE || '.%'*\
+         AND I.BUSI_KIND_ID = 200103
+         AND I.CYCLE_ID = V_CYCLE_ID;
+      commit;
+      return;
+  end JK_RW_CHANNEL_QXTMAS_PROC;*/
+
+  --wxddn
+  --edit by dn 2010-10-13
+  PROCEDURE JK_RW_CHANNEL_WXDDN_PROC(IN_REGION   IN JK_RW_DATA_BUSI_WXDDN.ORGANIZE_CODE%TYPE,
+                                     IN_CYCLE_ID JK_RW_DATA_BUSI_WXDDN.CYCLE_ID%TYPE) AS
+
+    ERR_NUM NUMBER;
+    ERR_MSG VARCHAR2(4000);
+
+    V_REGION_CODE JK_RW_DATA_BUSI_WXDDN.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_WXDDN.CYCLE_ID%TYPE;
+
+    V_JK_FFWBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%TYPE;
+    V_JK_BFWBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%TYPE;
+    V_DATE     DATE;
+
+  BEGIN
+
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_DATE        := TO_DATE('20100401', 'yyyymmdd');
+    V_JK_FFWBL    := 0.4;
+    V_JK_BFWBL    := 0.2;
+
+    --recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_WXDDN T
+       SET T.C_XSBL    = 0,
+           T.C_FWBL    = 0,
+           T.REWARD_XS = 0,
+           T.REWARD_FW = 0,
+           T.REWARD    = 0
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_WXDDN DDN
+       SET DDN.STATUS = 'N'
+     WHERE DDN.ORGANIZE_CODE = V_REGION_CODE
+       AND DDN.CYCLE_ID = V_CYCLE_ID
+       AND DDN.STATUS = 'Y';
+    COMMIT;
+
+    --update table JK_RW_DATA_BUSI_WXDDN
+    --update fwbl
+    UPDATE JK_RW_DATA_BUSI_WXDDN T
+       SET T.C_FWBL = (CASE WHEN T.BUSI_DATE < V_DATE THEN V_JK_FFWBL ELSE V_JK_BFWBL END)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    --update reward
+    UPDATE JK_RW_DATA_BUSI_WXDDN T
+       SET T.REWARD_FW = T.C_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = T.C_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y'
+       AND T.BILL_MONTH < TO_CHAR(ADD_MONTHS(T.BUSI_DATE,
+                                             (CASE WHEN T.BUSI_DATE < V_DATE THEN 24 ELSE 48 END)),
+                                  'yyyymm');
+    COMMIT;
+
+    -- insert into  JK_RW_DATA_CHANNEL_WXDDN
+    INSERT INTO JK_RW_DATA_CHANNEL_WXDDN DDN
+      (WXDDN_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD,
+       REWARD_XS,
+       REWARD_FW,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_WXDDN$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     T.STATUS,
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD) REWARD,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW
+                FROM JK_RW_DATA_BUSI_WXDDN T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    COMMIT;
+
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 4003);
+
+    UPDATE JK_RW_PAY PAY
+       SET PAY.PAY_FLAG = 'N'
+     WHERE PAY.CYCLE_ID = V_CYCLE_ID
+       AND PAY.BUSI_KIND_ID = 4003
+       AND PAY.RW_CHANNEL_ID IN
+           (SELECT C.CHANNEL_ID
+              FROM JK_CHANNEL C
+             WHERE C.CHANNEL_ORGANIZE_CODE = V_REGION_CODE
+               AND C.STATE = 1)
+       AND PAY.STATUS = 'Y';
+    COMMIT;
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    UPDATE JK_RW_DATA_MANAGE_INFO I
+       SET I.STATUS = 70
+     WHERE I.ORGANIZE_CODE = V_REGION_CODE
+          /*       AND UPPER(I.MANAGE_TEMPLATE_CODE) like
+                     'JK_RW_DATA_CHANNEL_WXDDN.' || V_REGION_CODE || '.INCOME%'*/
+       AND i.busi_kind_id = 4003
+       AND I.CYCLE_ID = V_CYCLE_ID;
+
+    COMMIT;
+
+  EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+      ROLLBACK;
+      ERR_NUM := SQLCODE;
+      ERR_MSG := SQLERRM;
+
+      INSERT INTO JK_LOGS
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      VALUES
+        (JK_LOGS_ID$SEQ.NEXTVAL,
+         '0',
+         'JK_RW_CHANNEL_WXDDN_PROC',
+         'rate is not found!!',
+         ERR_MSG,
+         SYSDATE,
+         'error no. ?' || ERR_NUM,
+         NULL,
+         NULL);
+      COMMIT;
+
+      UPDATE JK_RW_DATA_MANAGE_INFO I
+         SET I.STATUS = 64
+       WHERE I.ORGANIZE_CODE = V_REGION_CODE
+            /*       AND UPPER(I.MANAGE_TEMPLATE_CODE) like
+                       'JK_RW_DATA_CHANNEL_WXDDN.' || V_REGION_CODE || '.INCOME%'*/
+         AND i.busi_kind_id = 4003
+         AND I.CYCLE_ID = V_CYCLE_ID;
+
+      COMMIT;
+      RETURN;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      ERR_NUM := SQLCODE;
+      ERR_MSG := SQLERRM;
+
+      INSERT INTO JK_LOGS
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      VALUES
+        (JK_LOGS_ID$SEQ.NEXTVAL,
+         '0',
+         'JK_RW_CHANNEL_WXDDN_PROC',
+         'wxddn reward error!!',
+         ERR_MSG,
+         SYSDATE,
+         'error no. ?' || ERR_NUM,
+         NULL,
+         NULL);
+      COMMIT;
+      UPDATE JK_RW_DATA_MANAGE_INFO I
+         SET I.STATUS = 64
+       WHERE I.ORGANIZE_CODE = V_REGION_CODE
+            /*       AND UPPER(I.MANAGE_TEMPLATE_CODE) like
+                       'JK_RW_DATA_CHANNEL_WXDDN.' || V_REGION_CODE || '.INCOME%'*/
+         AND i.busi_kind_id = 4003
+         AND I.CYCLE_ID = V_CYCLE_ID;
+
+      COMMIT;
+      RETURN;
+  END JK_RW_CHANNEL_WXDDN_PROC;
+
+  --ydcrm
+  --edit by dn 2010-11-10
+  procedure JK_RW_CHANNEL_YDCRM_PROC(IN_REGION   IN Jk_Rw_Data_Busi_Ydcrm.Organize_Code%TYPE,
+                                     IN_CYCLE_ID Jk_Rw_Data_Busi_Ydcrm.CYCLE_ID%TYPE) AS
+    V_REGION_CODE Jk_Rw_Data_Busi_Ydcrm.Organize_Code%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Busi_Ydcrm.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '1003'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_YDCRM T
+       SET T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_YDCRM CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_JTYDCRM
+    INSERT INTO JK_RW_DATA_CHANNEL_YDCRM CRM
+      (YDCRM_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_YDCRM$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_YDCRM T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the ydcrm info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 1003);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_YDCRM.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 1003
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_YDCRM_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_YDCRM.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 1003
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_YDCRM_PROC',
+         'ydcrm reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_YDCRM.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 1003
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_YDCRM_PROC;
+
+  --add by dn 2010-11-10
+  --hlwjr
+  procedure JK_RW_CHANNEL_HLWJR_PROC(IN_REGION   IN JK_RW_DATA_BUSI_HLWJR.ORGANIZE_CODE%TYPE,
+                                     IN_CYCLE_ID JK_RW_DATA_BUSI_HLWJR.CYCLE_ID%TYPE) AS
+    V_REGION_CODE JK_RW_DATA_BUSI_HLWJR.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_HLWJR.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '500201'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_HLWJR T
+       SET T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_HLWJR CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_HLWJR
+    INSERT INTO JK_RW_DATA_CHANNEL_HLWJR CRM
+      (HLWJR_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_HLWJR$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_HLWJR T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the hlwjr info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 500201);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_HLWJR.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 500201
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_HLWJR_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_HLWJR.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 500201
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_HLWJR_PROC',
+         'hlwjr reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_HLWJR.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 500201
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_HLWJR_PROC;
+
+  --add by dn 2010-11-10
+  --zhyyjr
+  procedure JK_RW_CHANNEL_ZHYYJR_PROC(IN_REGION   IN JK_RW_DATA_BUSI_ZHYYJR.ORGANIZE_CODE%TYPE,
+                                      IN_CYCLE_ID JK_RW_DATA_BUSI_ZHYYJR.CYCLE_ID%TYPE) AS
+    V_REGION_CODE JK_RW_DATA_BUSI_ZHYYJR.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    JK_RW_DATA_BUSI_ZHYYJR.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.ELEMENT_VALUE_EXP%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_XSBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '500202'
+               AND E.RULE_ELEMENT_CODE = 'JK_XSBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '500202'
+               AND E.RULE_ELEMENT_CODE = 'JK_FWBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_ZHYYJR T
+       SET T.C_XSBL    = NVL2(T.PRODUCT_FLAG, V_JK_XSBL, 0),
+           T.C_FWBL    = NVL2(T.PRODUCT_FLAG, 0, V_JK_FWBL),
+           T.REWARD_XS = 0,
+           T.REWARD_FW = 0,
+           T.REWARD    = 0
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_BUSI_ZHYYJR T
+       SET T.REWARD_XS = T.C_XSBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD_FW = T.C_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = T.C_XSBL * (T.INCOME + T.ADJUST_FEE) +
+                         T.C_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_ZHYYJR CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_ZHYYJR
+    INSERT INTO JK_RW_DATA_CHANNEL_ZHYYJR CRM
+      (ZHYYJR_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_ZHYYJR$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     T.C_XSBL,
+                     T.C_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_ZHYYJR T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.C_XSBL,
+                        T.C_FWBL,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the zhyyjr info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 500202);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_ZHYYJR.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 500202
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_ZHYYJR_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_ZHYYJR.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 500202
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_ZHYYJR_PROC',
+         'zhyyjr reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_ZHYYJR.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 500202
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_ZHYYJR_PROC;
+
+  --400
+  --add by dn 2011-4-28
+  procedure JK_RW_CHANNEL_400_PROC(IN_REGION   IN Jk_Rw_Data_Busi_400.Organize_Code%TYPE,
+                                   IN_CYCLE_ID Jk_Rw_Data_Busi_400.CYCLE_ID%TYPE) AS
+    V_REGION_CODE Jk_Rw_Data_Busi_400.Organize_Code%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Busi_400.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '5003'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_400 T
+       SET T.C_XSBL    = V_JK_XSBL,
+           T.C_FWBL    = V_JK_FWBL,
+           T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_400 CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_400
+    INSERT INTO JK_RW_DATA_CHANNEL_400 CRM
+      (FOUR_HUNDRED_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_400$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_400 T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the 400 info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 5003);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_400.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 5003
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_400_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_400.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5003
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_400_PROC',
+         '400 reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_400.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5003
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_400_PROC;
+
+  --szcs
+  --add by zhy 2011-6-15
+  procedure JK_RW_CHANNEL_SZCS_PROC(IN_REGION   IN Jk_Rw_Data_Busi_SZCS.Organize_Code%TYPE,
+                                    IN_CYCLE_ID Jk_Rw_Data_Busi_SZCS.CYCLE_ID%TYPE) AS
+    V_REGION_CODE Jk_Rw_Data_Busi_SZCS.Organize_Code%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Busi_SZCS.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '5005'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_SZCS T
+       SET T.C_XSBL    = V_JK_XSBL,
+           T.C_FWBL    = V_JK_FWBL,
+           T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_SZCS CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_SZCS
+    INSERT INTO JK_RW_DATA_CHANNEL_SZCS CRM
+      (SZCS_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_SZCS$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_SZCS T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the SZCS info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 5005);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_SZCS.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 5005
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_SZCS_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_SZCS.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5005
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_SZCS_PROC',
+         'SZCS reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_SZCS.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5005
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_SZCS_PROC;
+
+  --呼叫中心直连
+  --add by dn 2011-5-4
+  procedure JK_RW_CHANNEL_HJZXZL_PROC(IN_REGION   IN Jk_Rw_Data_Busi_HJZXZL.Organize_Code%TYPE,
+                                      IN_CYCLE_ID Jk_Rw_Data_Busi_HJZXZL.CYCLE_ID%TYPE) AS
+    V_REGION_CODE Jk_Rw_Data_Busi_HJZXZL.Organize_Code%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Busi_HJZXZL.CYCLE_ID%TYPE;
+
+    V_JK_XSBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+    V_JK_FWBL JK_RULE_ELEMENT_EXT.Element_Value_Exp%type;
+
+    err_num NUMBER;
+    err_msg VARCHAR2(4000);
+  begin
+    V_REGION_CODE := IN_REGION;
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_JK_XSBL     := 0;
+
+    --1.get vendition proportion and service proportion;
+    SELECT T.ELEMENT_VALUE_EXP / 100
+      INTO V_JK_FWBL
+      FROM (SELECT *
+              FROM JK_RULE_ELEMENT_EXT E
+             WHERE E.ORGANIZE_CODE = V_REGION_CODE
+               AND E.BUSI_ID = '5004'
+               AND E.RULE_ELEMENT_CODE = 'JK_CJBL'
+               AND E.CYCLE_ID <= V_CYCLE_ID
+             ORDER BY E.CYCLE_ID DESC) T
+     WHERE ROWNUM = 1;
+
+    --2.recalculate the reward data
+    UPDATE JK_RW_DATA_BUSI_HJZXZL T
+       SET T.C_XSBL    = V_JK_XSBL,
+           T.C_FWBL    = V_JK_FWBL,
+           T.REWARD_XS = 0,
+           T.REWARD_FW = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE),
+           T.REWARD    = V_JK_FWBL * (T.INCOME + T.ADJUST_FEE)
+     WHERE T.ORGANIZE_CODE = V_REGION_CODE
+       AND T.CYCLE_ID = V_CYCLE_ID
+       AND T.STATUS = 'Y';
+    COMMIT;
+
+    UPDATE JK_RW_DATA_CHANNEL_HJZXZL CL
+       SET CL.STATUS = 'N'
+     WHERE CL.ORGANIZE_CODE = V_REGION_CODE
+       AND CL.CYCLE_ID = V_CYCLE_ID
+       AND CL.STATUS = 'Y';
+    COMMIT;
+
+    --3. insert  data into JK_RW_DATA_CHANNEL_HJZXZL
+    INSERT INTO JK_RW_DATA_CHANNEL_HJZXZL CRM
+      (HJZXZL_C_ID,
+       RW_CHANNEL_ID,
+       ORGANIZE_CODE,
+       CYCLE_ID,
+       BILL_MONTH,
+       C_XSBL,
+       C_FWBL,
+       STATUS,
+       ADJUST_FEE,
+       INCOME,
+       REWARD_XS,
+       REWARD_FW,
+       REWARD,
+       CREATE_TIME)
+      SELECT JK_RW_DATA_CHANNEL_HJZXZL$SEQ.NEXTVAL, TT.*, SYSDATE
+        FROM (SELECT T.RW_CHANNEL_ID,
+                     T.ORGANIZE_CODE,
+                     T.CYCLE_ID,
+                     T.BILL_MONTH,
+                     V_JK_XSBL,
+                     V_JK_FWBL,
+                     'Y',
+                     SUM(T.ADJUST_FEE) ADJUST_FEE,
+                     SUM(T.INCOME) INCOME,
+                     SUM(T.REWARD_XS) REWARD_XS,
+                     SUM(T.REWARD_FW) REWARD_FW,
+                     SUM(T.REWARD) REWARD
+                FROM JK_RW_DATA_BUSI_HJZXZL T
+               WHERE T.ORGANIZE_CODE = V_REGION_CODE
+                 AND T.CYCLE_ID = V_CYCLE_ID
+                 AND T.STATUS = 'Y'
+               GROUP BY T.RW_CHANNEL_ID,
+                        T.ORGANIZE_CODE,
+                        T.CYCLE_ID,
+                        T.BILL_MONTH,
+                        T.STATUS) TT;
+    commit;
+
+    --insert into the HJZXZL info of the jk_rw_pay
+    jk_rw_calculator.JK_RW_PAY_PROC(V_REGION_CODE,
+                                    V_CYCLE_ID,
+                                    IN_BUSI_KIND => 5004);
+
+    -- update JK_RW_DATA_MANAGE_INFO
+    update JK_RW_DATA_MANAGE_INFO i
+       set i.status = 70
+     where i.organize_code = V_REGION_CODE
+          /*       and upper(i.manage_template_code) =
+                     'JK_RW_DATA_CHANNEL_HJZXZL.' || V_REGION_CODE || '.INCOME'*/
+       AND i.busi_kind_id = 5004
+       and i.cycle_id = V_CYCLE_ID;
+    commit;
+
+  EXCEPTION
+    WHEN no_data_found then
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_HJZXZL_PROC',
+         'Rate is not found',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_HJZXZL.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5004
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      err_num := SQLCODE;
+      err_msg := SQLERRM;
+
+      INSERT INTO jk_logs
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      values
+        (jk_logs_id$seq.nextval,
+         '0',
+         'JK_RW_CHANNEL_HJZXZL_PROC',
+         'HJZXZL reward error!!',
+         err_msg,
+         sysdate,
+         'error no. : ' || err_num,
+         '',
+         '');
+      COMMIT;
+      update JK_RW_DATA_MANAGE_INFO i
+         set i.status = 64
+       where i.organize_code = V_REGION_CODE
+            /*       and upper(i.manage_template_code) =
+                       'JK_RW_DATA_CHANNEL_HJZXZL.' || V_REGION_CODE || '.INCOME'*/
+         AND i.busi_kind_id = 5004
+         and i.cycle_id = V_CYCLE_ID;
+      commit;
+      return;
+
+  end JK_RW_CHANNEL_HJZXZL_PROC;
+
+  --main
+  procedure JK_RW_MAIN_PROC(IN_REGION       IN JK_RW_DATA_MANAGE_info.Organize_Code%TYPE,
+                            IN_CYCLE_ID     JK_RW_DATA_MANAGE_info.CYCLE_ID%TYPE,
+                            IN_BUSI_KIND_id JK_BUSI_KIND.BUSI_KIND_ID%TYPE) AS
+
+    V_REGION_CODE  JK_RW_DATA_MANAGE_MAIN.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID     JK_RW_DATA_MANAGE_MAIN.CYCLE_ID%TYPE;
+    v_BUSI_KIND_id JK_BUSI_KIND.BUSI_KIND_ID%TYPE;
+
+    reward_exception exception;
+
+  begin
+
+    V_REGION_CODE  := upper(IN_REGION);
+    v_cycle_id     := IN_CYCLE_ID;
+    v_BUSI_KIND_id := IN_BUSI_KIND_id;
+    /*
+     --bb
+     IF v_BUSI_KIND_id = 3001 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_BB_PROC(V_REGION_CODE,V_CYCLE_ID);
+     --jxhd
+     ELSIF    v_BUSI_KIND_id = 4002 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_JXHD_PROC(V_REGION_CODE,V_CYCLE_ID);
+     --ipztc
+      ELSIF    v_BUSI_KIND_id = 4001 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_IPZTC_PROC(V_REGION_CODE,V_CYCLE_ID);
+      --jtcl
+     ELSIF    v_BUSI_KIND_id = 1001 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_JTCL_PROC(V_REGION_CODE,V_CYCLE_ID);
+     --  jttc
+     ELSIF    v_BUSI_KIND_id = 1002 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_JTTC_PROC(V_REGION_CODE,V_CYCLE_ID);
+     --MASDX
+     ELSIF    v_BUSI_KIND_id = 200101 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_MASDX_PROC(V_REGION_CODE,V_CYCLE_ID);
+      --QXTDIYDX
+     ELSIF    v_BUSI_KIND_id = 200102 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_QXTDIYDX_PROC(V_REGION_CODE,V_CYCLE_ID);
+      --QXTMAS
+     ELSIF    v_BUSI_KIND_id = 200103 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_QXTMAS_PROC(V_REGION_CODE,V_CYCLE_ID);
+     --WXDDN
+      ELSIF    v_BUSI_KIND_id = 4003 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_WXDDN_PROC(V_REGION_CODE,V_CYCLE_ID);
+      --YDCRM
+      ELSIF    v_BUSI_KIND_id = 1003 THEN
+        jk_rw_calculator.JK_RW_CHANNEL_YDCRM_PROC(V_REGION_CODE,V_CYCLE_ID);
+     END IF;
+
+    */
+    --jxhd
+    IF v_BUSI_KIND_id = 4002 THEN
+      jk_rw_calculator.JK_RW_CHANNEL_JXHD_PROC(V_REGION_CODE, V_CYCLE_ID);
+
+      --QXTDIYDX
+    ELSIF v_BUSI_KIND_id = 200102 THEN
+      jk_rw_calculator.JK_RW_CHANNEL_QXTDIYDX_PROC(V_REGION_CODE,
+                                                   V_CYCLE_ID);
+      --QXTDIYCX
+    ELSIF v_BUSI_KIND_id = 200104 THEN
+      jk_rw_calculator.JK_RW_CHANNEL_QXTDIYCX_PROC(V_REGION_CODE,
+                                                   V_CYCLE_ID);
+
+    END IF;
+
+  end JK_RW_MAIN_PROC;
+  --pay
+  PROCEDURE JK_RW_PAY_PROC(IN_REGION    IN Jk_Rw_Data_Manage_Info.ORGANIZE_CODE%TYPE,
+                           IN_CYCLE_ID  Jk_Rw_Data_Manage_Info.CYCLE_ID%TYPE,
+                           IN_BUSI_KIND JK_BUSI_KIND.BUSI_KIND_ID%TYPE) AS
+
+    ERR_NUM NUMBER;
+    ERR_MSG VARCHAR2(4000);
+
+    V_REGION_CODE Jk_Rw_Data_Manage_Info.ORGANIZE_CODE%TYPE;
+    V_CYCLE_ID    Jk_Rw_Data_Manage_Info.CYCLE_ID%TYPE;
+    V_BUSI_KIND   JK_BUSI_KIND.BUSI_KIND_ID%TYPE;
+    V_SQL         VARCHAR2(2000);
+    V_TABLE_NAME  VARCHAR2(50);
+
+  BEGIN
+
+    V_REGION_CODE := UPPER(IN_REGION);
+    V_CYCLE_ID    := IN_CYCLE_ID;
+    V_BUSI_KIND   := IN_BUSI_KIND;
+    --update the status of the table jk_rw_pay;
+    UPDATE JK_RW_PAY PAY
+       SET PAY.STATUS = 'N'
+     WHERE PAY.CYCLE_ID = V_CYCLE_ID
+       AND PAY.BUSI_KIND_ID = V_BUSI_KIND
+       AND PAY.RW_CHANNEL_ID IN
+           (SELECT C.CHANNEL_ID
+              FROM JK_CHANNEL C
+             WHERE C.Channel_Organize_Code = V_REGION_CODE
+               AND C.STATE = '1');
+    COMMIT;
+
+    --insert the info into table jk_rw_pay;
+
+    SELECT J.BUSI_TABLE_NAME
+      INTO V_TABLE_NAME
+      FROM JK_BUSI_KIND J
+     WHERE J.BUSI_KIND_ID = V_BUSI_KIND
+       AND J.STATE <> 0;
+    /*IF upper(V_TABLE_NAME) = 'JK_RW_DATA_CHANNEL_JXHD' THEN
+      V_SQL := ' insert into jk_rw_pay
+          (RW_PAY_ID, busi_kind_id,RW_CHANNEL_ID, CYCLE_ID, CAL_MONTH, PAY_FLAG, STATUS)
+          select jk_rw_pay$seq.nextval,' || V_BUSI_KIND ||
+               ',t.*,
+                 '||v_cycle_id||',
+                 to_char(sysdate, ''yyyymm''),
+                 ''Y'',
+                 ''Y''
+            from (select distinct j.rw_channel_id
+                     from jk_rw_data_channel_jxhd j
+                    where j.cycle_id = '||v_cycle_id||'
+                      and j.status = ''Y'') t';
+      EXECUTE IMMEDIATE V_SQL;
+      COMMIT;
+    ELSE*/
+    V_SQL := 'insert into jk_rw_pay
+        (RW_PAY_ID, busi_kind_id,RW_CHANNEL_ID, CYCLE_ID, CAL_MONTH, PAY_FLAG, STATUS)
+        select jk_rw_pay$seq.nextval,' || V_BUSI_KIND || '
+               ,t.*,
+               ' || v_cycle_id || ',
+               to_char(sysdate, ''yyyymm''),
+               ''Y'',
+               ''Y''
+          from (select distinct j.rw_channel_id
+                   from ' || V_TABLE_NAME || ' j
+                  where j.cycle_id = ' || v_cycle_id || '
+                    and j.organize_code = ''' || V_REGION_CODE || '''
+                    and j.status = ''Y'') t';
+    EXECUTE IMMEDIATE V_SQL;
+    COMMIT;
+
+    --UPDATE JK_RW_PAY PAY_FLAG='N'
+    UPDATE JK_RW_PAY P
+       SET P.PAY_FLAG = 'N',P.ARREARS=(SELECT SUM(C.AMOUNT) AMOUNT FROM JK_RW_ARREARS C WHERE C.BUSI_KIND_ID=V_BUSI_KIND AND C.CYCLE_ID<=V_CYCLE_ID AND C.CHANNEL_ID=P.RW_CHANNEL_ID AND C.STATE = 1)
+     WHERE P.RW_CHANNEL_ID IN
+           (SELECT C.CHANNEL_ID FROM JK_RW_ARREARS C WHERE C.BUSI_KIND_ID=V_BUSI_KIND AND C.CYCLE_ID<=V_CYCLE_ID AND C.STATE = 1)
+       AND P.PAY_CYCLE_ID IS NULL
+       AND P.PAY_MONTH IS NULL
+       AND P.CYCLE_ID=V_CYCLE_ID
+       AND P.BUSI_KIND_ID=V_BUSI_KIND
+       AND P.STATUS = 'Y'
+       AND P.PAY_FLAG = 'Y';
+    COMMIT;
+    --END IF;
+
+  EXCEPTION
+
+    WHEN OTHERS THEN
+      ROLLBACK;
+      ERR_NUM := SQLCODE;
+      ERR_MSG := SQLERRM;
+
+      INSERT INTO JK_LOGS
+        (JK_LOGS_ID,
+         LOG_LEVEL,
+         MODULE_NAME,
+         LOG_MSG,
+         EXCEPTION,
+         LOG_TIME,
+         LOG_FIELD1,
+         LOG_FIELD2,
+         LOG_FIELD3)
+      VALUES
+        (JK_LOGS_ID$SEQ.NEXTVAL,
+         '0',
+         'JK_RW_PAY_PROC',
+         'pay proc error!!',
+         ERR_MSG,
+         SYSDATE,
+         'error no. :' || ERR_NUM,
+         NULL,
+         NULL);
+      COMMIT;
+      RETURN;
+  END JK_RW_PAY_PROC;
+
+end JK_RW_CALCULATOR;
